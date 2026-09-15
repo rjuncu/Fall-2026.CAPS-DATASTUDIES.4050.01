@@ -4,11 +4,14 @@
 
 **Files:** 
 
-coadread_mskcc.tar.gz
+```coadread_mskcc.tar.gz```
 > A compressed file containing mutational data matrices 
 
-coadread_mskcc_clinical_data.tsv
-> Clinical data that was scraped and compressed from coadread_mskcc.tar.gz
+```coadread_mskcc_clinical_data.tsv```
+> Clinical data that was scraped and compressed from ```coadread_mskcc.tar.gz```
 
-annotated_mutations.tsv
+```annotated_mutations.tsv```
 > Merged clinical and mutational data that has been prepped for input into SciClone
+
+```sciClone_script.R```
+> Script creating subclonal clusters from sequencing read data in ```annotated_mutations.tsv```
