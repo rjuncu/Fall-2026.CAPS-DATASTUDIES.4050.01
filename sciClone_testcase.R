@@ -14,15 +14,17 @@
 #Do the observed VAFs between primary and metastatic tumors from the same patient 
 #form clusters that could represent different populations of mutations?
 
+#The goal of this script is to validate the SciClone analysis on an example patient
+
 library(sciClone)
 library(remotes)
 library(readr)
 library(dplyr)
 
 #get info on sciclone arguments
-packageVersion("sciClone")
-args(sciClone)
-getAnywhere(sciClone)
+# packageVersion("sciClone")
+# args(sciClone)
+# getAnywhere(sciClone)
 
 #Read input data
 raw_input <- read_tsv("annotated_mutations.tsv")
@@ -36,8 +38,35 @@ depth_100_data <- raw_input %>%
 
 #there are more metastatic mutations than primary mutations for various reasons
 #sequence coverage, filtering, calling sensitivity, tumor behavior changes...
-#number of mutations remaining after filtering for depth => 100
+#number of mutations remaining after filtering for depth => 100 is 137 instead of 138
 table(depth_100_data$`Sample Type`)
+
+#investigating which sample has less than 100 depth
+all_samples <- unique(raw_input$Tumor_Sample_Barcode)
+
+filtered_samples <- unique(depth_100_data$Tumor_Sample_Barcode)
+
+setdiff(all_samples, filtered_samples)
+# primary
+raw_input %>%
+  filter(Tumor_Sample_Barcode == "EV-034-P") %>%
+  summarise(
+    total_mutations = n(),
+    max_depth = max(t_ref_count + t_alt_count, na.rm = TRUE),
+    mean_depth = mean(t_ref_count + t_alt_count, na.rm = TRUE),
+    mutations_depth_100 = sum((t_ref_count + t_alt_count) >= 100)
+  )
+ # metastatic
+raw_input %>%
+  filter(Tumor_Sample_Barcode == "EV-034-M") %>%
+  summarise(
+    total_mutations = n(),
+    max_depth = max(t_ref_count + t_alt_count, na.rm = TRUE),
+    mean_depth = mean(t_ref_count + t_alt_count, na.rm = TRUE),
+    mutations_depth_100 = sum((t_ref_count + t_alt_count) >= 100)
+  )
+
+#the primary tumor for patient EV-034-P has 48 depth, but the metastatic tumor has 2877 depth
 
 #Examine the structure of a single patient paired tumors test case
 ev001 <- depth_100_data %>%
@@ -196,3 +225,47 @@ ev001_results <- ev001_sciclone@vafs.merged %>%
   )
 
 ev001_results
+
+#Now that SciClone has been successfully run on a test example, time to find all the eligible samples in the study
+#investigating all samples 
+#sorting their mutations into four categories
+#shared, primary only, metastatic only, total unique
+shared_summary <- depth_100_data %>%
+  mutate(
+    Mutation_ID = paste(Chromosome, Start_Position, sep = ":")
+  ) %>%
+  group_by(`Patient ID`, Mutation_ID) %>%
+  summarise(
+    in_primary = any(`Sample Type` == "Primary"),
+    in_metastasis = any(`Sample Type` == "Metastasis"),
+    .groups = "drop"
+  ) %>%
+  group_by(`Patient ID`) %>%
+  summarise(
+    shared_sites = sum(in_primary & in_metastasis),
+    primary_only = sum(in_primary & !in_metastasis),
+    metastasis_only = sum(!in_primary & in_metastasis),
+    total_unique_sites = n(),
+    .groups = "drop"
+  )
+
+#Understand how many shared mutations exist in the average patient
+# Validate that patient EV-034 is the only patient with no shared mutations
+shared_summary %>%
+  arrange(shared_sites)
+shared_summary %>%
+  summarise(Pairs_over_3 = sum(shared_sites >= 3))
+
+
+# Check for duplicate genomic positions within samples -> should return 0 
+depth_100_data %>%
+  count(Tumor_Sample_Barcode, Chromosome, Start_Position) %>%
+  filter(n > 1)
+
+
+ev001_shared <- ev001 %>%
+  group_by(Mutation_ID) %>%
+  filter(n_distinct(Tumor_Sample_Barcode) == 2) %>%
+  ungroup()
+
+ev001_shared
