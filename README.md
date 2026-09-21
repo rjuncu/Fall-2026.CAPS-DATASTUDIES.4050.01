@@ -13,5 +13,8 @@
 ```annotated_mutations.tsv```
 > Merged clinical and mutational data that has been prepped for input into SciClone
 
-```sciClone_script.R```
+```sciClone_testcase.R```
 > Script creating subclonal clusters from sequencing read data in ```annotated_mutations.tsv```
+
+```sciClone_full_analysis.R```
+> Script for applying SciClone clustering on pairs of patient segments that were filtered in ```sciClone_testcase.R```
