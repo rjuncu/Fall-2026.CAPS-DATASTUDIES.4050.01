@@ -320,13 +320,6 @@ rds_check <- lapply(
 rds_check <- bind_rows(rds_check)
 
 rds_check
-# rds_check %>% filter(!Match)
-# table(rds_check$Match)
-# rds_check %>%
-#   count(Object_Patient) %>%
-#   filter(n > 1)
-# rds_check %>%
-#   filter(Object_Patient %in% c("EV-056", "EV-064"))
 
 # Patients EV-058 and EV-066 failed sciclone clustering, so they will be excluded 
 # Remove and inspect their .rds files
@@ -339,10 +332,6 @@ rds_files <- list.files("./sciclone_results/objects", pattern = "_sciclone\\.rds
 # Extract all files by applying the function defined above
 all_sciclone_results <- lapply(rds_files, extracted_sci_results)
 clonevol_input <- bind_rows(all_sciclone_results)
-
-# Remove samples without adequate depth
-#clonevol_input <- clonevol_input %>%
-#  filter(adequateDepth == 1)
 
 # Inspect the resulting data
 dim(clonevol_input)
