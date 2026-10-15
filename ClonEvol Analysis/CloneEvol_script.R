@@ -14,7 +14,7 @@ library(jellyfisher)
 library(clonevol)
 library(readr)
 library(dplyr)
-
+getwd()
 sciclone_total <- read_tsv("./SciClone Analysis/sciclone_results/tables/sciclone_total")
 summary(sciclone_total)
 
