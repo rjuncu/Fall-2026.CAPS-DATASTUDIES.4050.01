@@ -92,6 +92,6 @@ annotated_mutations <- annotated_mutations %>%
 summary(annotated_mutations$VAF)
 
 #Export into file for SciClone Analysis 
-write_tsv(annotated_mutations, "annotated_mutations.tsv")
+write_tsv(annotated_mutations, "./SciClone Analysis/annotated_mutations.tsv")
 
 list.files()
