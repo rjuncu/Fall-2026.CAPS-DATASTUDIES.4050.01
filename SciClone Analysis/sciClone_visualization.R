@@ -12,8 +12,8 @@ library(dplyr)
 # Creating animations of SciClone clustering data with imagemagick
 # https://github.com/genome/sciclone/blob/master/README.md
 # Read in files
-input_raw <- read_tsv("./sciclone_results/tables/sciclone_total")
-input_clean <- read_tsv("./sciclone_results/tables/sciclone_clustered")
+input_raw <- read_tsv("./SciClone Analysis/sciclone_results/tables/sciclone_total.tsv")
+input_clean <- read_tsv("./SciClone Analysis/sciclone_results/tables/sciclone_clustered.tsv")
 head(input_raw)
 
 # Function definition for plotting patient VAFs by frame
@@ -86,7 +86,7 @@ frame_files <- sapply(
   }
 )
 gif <- image_read(frame_files)
-gif <- image_animate(gif, fps = 2)
+gif <- image_animate(gif, fps = 1)
  
-image_write(gif,"./sciclone_results/plots/sciclone_animation.gif")
+image_write(gif,"./SciClone Analysis/sciclone_results/plots/sciclone_animation.gif")
  

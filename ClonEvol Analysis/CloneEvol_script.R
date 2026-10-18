@@ -15,124 +15,269 @@ library(clonevol)
 library(readr)
 library(dplyr)
 getwd()
-sciclone_total <- read_tsv("./SciClone Analysis/sciclone_results/tables/sciclone_total")
+
+# This script follows the tutorial at https://raw.githubusercontent.com/hdng/clonevol/master/vignettes/clonevol.pdf
+
+
+# ClonEvol analysis across all patients
+# Load SciClone results
+sciclone_total <- read_tsv("./sciclone_total.tsv")
 summary(sciclone_total)
+dim(sciclone_total)
+names(sciclone_total)
 
-ev001 <- sciclone_total %>%
-  filter(
-    Patient_ID == "EV-001",
-    adequateDepth == 1,
-    !is.na(cluster),
-    cluster > 0,
-    !is.na(Primary_VAF),
-    !is.na(Metastasis_VAF)
-  ) %>%
-  select(
-    cluster, 
-    Primary = Primary_VAF,
-    Metastasis = Metastasis_VAF
-  ) %>%
-  arrange(cluster)
 
-print(ev001)
-summary(ev001)
+# Create output directories
+dir.create("clonevol_results/objects", recursive = TRUE, showWarnings = FALSE)
 
-library(dplyr)
+dir.create("clonevol_results/tables", recursive = TRUE, showWarnings = FALSE)
 
-# Classify each observation without changing its original assignment
-diagnostic <- sciclone_total %>%
-  mutate(
-    assignment_status = case_when(
-      is.na(adequateDepth) ~ "Unknown depth status",
-      adequateDepth != 1 ~ "Inadequate depth",
-      is.na(cluster) ~ "Adequate depth, cluster NA",
-      cluster == 0 ~ "Adequate depth, cluster 0",
-      cluster > 0 ~ "Adequate depth, assigned cluster",
-      TRUE ~ "Other"
+# Function definition for preparing patient data for clonevol bootstrapping
+# Parameters: patient_data -> Represents a patient's record in sciclone_total
+prepare_clonevol_input <- function(patient_data) {
+  
+  x <- patient_data %>%
+    filter(
+      adequateDepth == 1,
+      !is.na(cluster),
+      cluster > 0,
+      !is.na(Primary_VAF),
+      !is.na(Metastasis_VAF)
+    ) %>%
+    transmute(
+      chr = chr,
+      st = st,
+      cluster = as.integer(cluster),
+      Primary = Primary_VAF,
+      Metastasis = Metastasis_VAF
+    ) %>%
+    distinct(chr, st, .keep_all = TRUE)
+  
+  # ClonEvol requires consecutive positive cluster IDs.
+  if (nrow(x) > 0) {
+    old_clusters <- sort(unique(x$cluster))
+    x$cluster <- match(x$cluster, old_clusters)
+  }
+  
+  x
+}
+
+# Function definition for running ClonEvol for one patient
+# Parameters: 
+#   patient_id <- represents a unique patient
+#   patient_data <- information regarding cluster connections 
+#   num_boots <- number of bootstrap resampling 
+#   initiation_model <- polyclonal worked, while monoclonal setting did not
+run_clonevol_patient <- function(
+    patient_id,
+    patient_data,
+    num_boots = 1000,
+    initiation_model = "polyclonal") {
+  
+  cat("\n----------------------------------------\n")
+  cat("Patient:", patient_id, "\n")
+  cat("----------------------------------------\n")
+  
+  # Prepare patient-specific variants
+  x <- prepare_clonevol_input(patient_data)
+  
+  n_variants <- nrow(x)
+  n_clusters <- dplyr::n_distinct(x$cluster)
+  
+  # Return a skipped result if there is insufficient input
+  if (n_variants == 0 || n_clusters < 2) {
+    return(list(
+      patient_id = patient_id,
+      status = "SKIPPED",
+      n_variants = n_variants,
+      n_clusters = n_clusters,
+      n_models = NA_integer_,
+      error = "No eligible variants or fewer than two clusters",
+      result = NULL
+    ))
+  }
+  
+  # Validate input
+  if (any(!is.finite(x$Primary)) ||
+      any(!is.finite(x$Metastasis)) ||
+      any(x$Primary < 0 | x$Primary > 100) ||
+      any(x$Metastasis < 0 | x$Metastasis > 100)) {
+    return(list(
+      patient_id = patient_id,
+      status = "SKIPPED",
+      n_variants = n_variants,
+      n_clusters = n_clusters,
+      n_models = NA_integer_,
+      error = "Invalid or non-finite VAF values",
+      result = NULL
+    ))
+  }
+  
+  # Set up sample columns and groups
+  vaf_col_names <- c("Primary", "Metastasis")
+  
+  sample_groups <- c(
+    Primary = "P",
+    Metastasis = "M"
+  )
+  
+  # Run ClonEvol; capture errors so one patient cannot
+  # stop the entire batch.
+  set.seed(123)
+  
+  y <- tryCatch(
+    infer.clonal.models(
+      variants = x,
+      cluster.col.name = "cluster",
+      vaf.col.names = vaf_col_names,
+      sample.groups = sample_groups,
+      cancer.initiation.model = initiation_model,
+      subclonal.test = "bootstrap",
+      subclonal.test.model = "non-parametric",
+      num.boots = num_boots,
+      founding.cluster = NULL,
+      cluster.center = "mean",
+      ignore.clusters = NULL,
+      min.cluster.vaf = 0.01,
+      sum.p = 0.05,
+      alpha = 0.05
+    ),
+    error = function(e) e
+  )
+  
+  # Record errors and continue to the next patient
+  if (inherits(y, "error")) {
+    error_message <- conditionMessage(y)
+    
+    cat("FAILED:", patient_id, "\n")
+    cat("Reason:", error_message, "\n")
+    
+    return(list(
+      patient_id = patient_id,
+      status = "FAILED",
+      n_variants = n_variants,
+      n_clusters = n_clusters,
+      n_models = NA_integer_,
+      error = error_message,
+      result = NULL
+    ))
+  }
+  
+  # Count consensus models if available
+  n_models <- if (!is.null(y$num.matched.models)) {
+    y$num.matched.models
+  } else {
+    NA_integer_
+  }
+  
+  # Save successful result
+  output_file <- file.path(
+    "clonevol_results",
+    "objects",
+    paste0(patient_id, "_clonevol.rds")
+  )
+  
+  saveRDS(y, output_file)
+  
+  cat("SUCCESS:", patient_id, "\n")
+  cat("Eligible variants:", n_variants, "\n")
+  cat("Clusters:", n_clusters, "\n")
+  cat("Matched models:", n_models, "\n")
+  
+  list(
+    patient_id = patient_id,
+    status = "SUCCESS",
+    n_variants = n_variants,
+    n_clusters = n_clusters,
+    n_models = n_models,
+    error = NA_character_,
+    result = y
+  )
+}
+
+# Function definition for iterating over all patients
+# Parameters: 
+#   sciclone_table <- represents input from sciclone clustering
+run_clonevol_all <- function(sciclone_table,
+                             num_boots = 1000,
+                             initiation_model = "polyclonal") {
+  
+  # Check that required columns exist
+  required_columns <- c(
+    "Patient_ID", "adequateDepth", "cluster",
+    "chr", "st", "Primary_VAF", "Metastasis_VAF"
+  )
+  
+  missing_columns <- setdiff(
+    required_columns,
+    names(sciclone_table)
+  )
+  
+  if (length(missing_columns) > 0) {
+    stop(
+      "Missing required columns: ",
+      paste(missing_columns, collapse = ", ")
     )
+  }
+  
+  patient_ids <- unique(
+    na.omit(as.character(sciclone_table$Patient_ID))
   )
-
-# Overall counts
-diagnostic %>%
-  count(assignment_status, sort = TRUE)
-
-# Compare assignment status across patients
-diagnostic %>%
-  count(Patient_ID, assignment_status) %>%
-  arrange(Patient_ID, assignment_status)
-
-# Check how many positive clusters each patient has
-diagnostic %>%
-  filter(
-    adequateDepth == 1,
-    !is.na(cluster),
-    cluster > 0
-  ) %>%
-  group_by(Patient_ID) %>%
-  summarise(
-    n_mutations = n(),
-    n_clusters = n_distinct(cluster),
-    cluster_ids = paste(sort(unique(cluster)), collapse = ", "),
-    .groups = "drop"
-  ) %>%
-  arrange(n_clusters, Patient_ID)
-
-
-# Count cluster-0 observations for each patient
-cluster0_by_patient <- diagnostic %>%
-  filter(adequateDepth == 1, cluster == 0) %>%
-  group_by(Patient_ID) %>%
-  summarise(
-    n_cluster0 = n(),
-    mean_primary_vaf = mean(Primary_VAF, na.rm = TRUE),
-    mean_metastasis_vaf = mean(Metastasis_VAF, na.rm = TRUE),
-    min_primary_depth = min(Primary_depth, na.rm = TRUE),
-    min_metastasis_depth = min(Metastasis_depth, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  arrange(desc(n_cluster0))
-
-print(cluster0_by_patient, n = Inf)
-
-
-diagnostic %>%
-  filter(adequateDepth == 1) %>%
-  group_by(Patient_ID, cluster) %>%
-  summarise(
-    n_mutations = n(),
-    primary_vaf_mean = mean(Primary_VAF, na.rm = TRUE),
-    metastasis_vaf_mean = mean(Metastasis_VAF, na.rm = TRUE),
-    primary_vaf_sd = sd(Primary_VAF, na.rm = TRUE),
-    metastasis_vaf_sd = sd(Metastasis_VAF, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  arrange(Patient_ID, cluster)
-
-# Identify mutations using patient + chromosome + position
-cluster0_check <- diagnostic %>%
-  filter(adequateDepth == 1, cluster == 0) %>%
-  mutate(mutation_key = paste(Patient_ID, chr, st, sep = "_"))
-
-clustered_check <- sciclone_total %>%
-  mutate(mutation_key = paste(Patient_ID, chr, st, sep = "_"))
-
-# Which cluster-0 mutations are absent from the clustered table?
-cluster0_missing_from_clean <- cluster0_check %>%
-  anti_join(
-    clustered_check %>% select(mutation_key),
-    by = "mutation_key"
+  
+  results <- list()
+  summaries <- list()
+  
+  for (patient_id in patient_ids) {
+    
+    patient_data <- sciclone_table %>%
+      filter(as.character(Patient_ID) == patient_id)
+    
+    patient_result <- run_clonevol_patient(
+      patient_id = patient_id,
+      patient_data = patient_data,
+      num_boots = num_boots,
+      initiation_model = initiation_model
+    )
+    
+    # Keep the full result in memory only if successful
+    if (!is.null(patient_result$result)) {
+      results[[patient_id]] <- patient_result$result
+    }
+    
+    # Keep a compact summary for every patient
+    summaries[[patient_id]] <- data.frame(
+      Patient_ID = patient_result$patient_id,
+      Status = patient_result$status,
+      Eligible_variants = patient_result$n_variants,
+      Number_of_clusters = patient_result$n_clusters,
+      Matched_models = patient_result$n_models,
+      Error = patient_result$error,
+      stringsAsFactors = FALSE
+    )
+  }
+  
+  list(
+    results = results,
+    summary = dplyr::bind_rows(summaries)
   )
+}
 
-nrow(cluster0_missing_from_clean)
-print(cluster0_missing_from_clean, n = Inf)
+# Run the batch
+clonevol_output <- run_clonevol_all(
+  sciclone_table = sciclone_total,
+  num_boots = 1000,
+  initiation_model = "polyclonal"
+)
 
-# shorten vaf column names as they will be
-vaf.col.names <- grep('.vaf', colnames(x), value=T)
-sample.names <- gsub('.vaf', '', vaf.col.names)
-x[, sample.names] <- x[, vaf.col.names]
-vaf.col.names <- sample.names
-# prepare sample grouping
-sample.groups <- c('P', 'R');
-names(sample.groups) <- vaf.col.names
-# setup the order of clusters to display in various plots (later)
-x <- x[order(x$cluster),]
+clonevol_results <- clonevol_output$results
+clonevol_summary <- clonevol_output$summary
+
+# Save and inspect the summary
+write_tsv(clonevol_summary, "clonevol_results/tables/clonevol_run_summary.tsv")
+
+print(clonevol_summary)
+
+table(clonevol_summary$Status, useNA = "ifany")
+
+
+

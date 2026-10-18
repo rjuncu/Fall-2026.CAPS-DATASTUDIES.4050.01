@@ -563,7 +563,7 @@ sciclone_clustered %>%
   arrange(Patient_ID, cluster)
 
 # Create tables
-write_tsv(sciclone_clustered, "./sciclone_results/tables/sciclone_clustered")
-write_tsv(sciclone_clustered_NA, "./sciclone_results/tables/sciclone_NA")
-write_tsv(sciclone_clustered_0, "./sciclone_results/tables/sciclone_0")
-write_tsv(clonevol_input, "./sciclone_results/tables/sciclone_total")
+write_tsv(sciclone_clustered, "./sciclone_results/tables/sciclone_clustered.tsv")
+write_tsv(sciclone_clustered_NA, "./sciclone_results/tables/sciclone_NA.tsv")
+write_tsv(sciclone_clustered_0, "./sciclone_results/tables/sciclone_0.tsv")
+write_tsv(clonevol_input, "./sciclone_results/tables/sciclone_total.tsv")

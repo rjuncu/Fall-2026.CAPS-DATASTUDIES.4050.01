@@ -1,0 +1,6 @@
+clone_id	original_cluster	mutations
+1	1	FAM123B p.R601*; AR p.A270T
+2	2	MET p.I639V
+3	3	TP53 p.E258G; APC p.E1494G
+4	4	KRAS p.G12V / KRAS p.G12D / KRAS p.G12A; CDH1 p.N809S; FBXW7 p.K374R
+5	5	MTOR p.S2127F
