@@ -4,8 +4,9 @@
 #### Data Source: https://www.cbioportal.org/study/clinicalData?id=coadread_mskcc 
 Brannon AR, Vakiani E, Sylvester BE, Scott SN, McDermott G, Shah RH, Kania K, Viale A, Oschwald DM, Vacic V, Emde AK, Cercek A, Yaeger R, Kemeny NE, Saltz LB, Shia J, D'Angelica MI, Weiser MR, Solit DB, Berger MF. Comparative sequencing analysis reveals high genomic concordance between matched primary and metastatic colorectal cancer lesions. Genome Biol. 2014 Aug 28;15(8):454. doi: 10.1186/s13059-014-0454-7. PMID: 25164765; PMCID: PMC4189196.
 
-#### **Files:** 
+#### **Files:**
 
+#### **Data Cleaning**
 ```coadread_mskcc.tar.gz```
 > A compressed file containing mutational data matrices 
 
@@ -15,16 +16,27 @@ Brannon AR, Vakiani E, Sylvester BE, Scott SN, McDermott G, Shah RH, Kania K, Vi
 ```datacleaning.R```
 > Script for cleaning input data files ```coad_read_mskcc``` and returns ```annotated_mutations.tsv```
 
+#### **SciClone Analysis**
 ```annotated_mutations.tsv```
 > Merged clinical and mutational data that has been prepped for input into SciClone
-
-```sciClone_full_analysis.R```
-> Script for creating subclonal clusters from sequencing read data in ```annotated_mutations.tsv```
 
 ```sciclone_patient_input.tsv```
 > Dataset containing a list of patients who have at least 3 shared mutations between primary and metastatic tumors, with a depth of at least 100
 
 ```sciclone_mutation_input.tsv```
 > Dataset containing mutation data from patients listed in ```sciclone_patient_input.tsv```
+
+```sciClone_full_analysis.R```
+> Script for creating subclonal clusters from sequencing read data in ```annotated_mutations.tsv```
+
+```sciClone_visualization.R```
+> Script for plotting subclonal clusters
+
+#### **ClonEvol Analysis**
+```ClonEvol_script.R```
+> Script for sorting clusters into bootstrapped trees
+
+```ClonEvol_visualizer.R```
+> Script for using Jellyfisher to plot trees
 
 ![](https://github.com/rjuncu/Fall-2026.CAPS-DATASTUDIES.4050.01/blob/da204495b4d95d9585cbe23b2cf751ae50b4ba1c/SciClone%20Analysis/sciclone_results/plots/sciclone_animation.gif)
