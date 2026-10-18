@@ -26,3 +26,5 @@ Brannon AR, Vakiani E, Sylvester BE, Scott SN, McDermott G, Shah RH, Kania K, Vi
 
 ```sciclone_mutation_input.tsv```
 > Dataset containing mutation data from patients listed in ```sciclone_patient_input.tsv```
+
+![](https://github.com/rjuncu/Fall-2026.CAPS-DATASTUDIES.4050.01/blob/da204495b4d95d9585cbe23b2cf751ae50b4ba1c/SciClone%20Analysis/sciclone_results/plots/sciclone_animation.gif)
