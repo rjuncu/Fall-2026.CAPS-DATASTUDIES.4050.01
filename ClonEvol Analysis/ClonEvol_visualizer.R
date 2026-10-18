@@ -1,15 +1,17 @@
-install.packages("jellyfisher")
-install.packages('devtools')
-library(devtools)
-install_github('hdng/clonevol')
-install.packages('gridBase')
-install.packages('gridExtra')
-install.packages('ggplot2')
-install.packages('igraph')
-install.packages('packcircles')
-install_github('hdng/trees')
-install.packages("readr")
-install.packages("webshot2")
+# install.packages("jellyfisher")
+# install.packages("devtools")
+# devtools::install_github("hdng/clonevol")
+# install.packages("gridBase")
+# install.packages("gridExtra")
+# install.packages("ggplot2")
+# install.packages("igraph")
+# install.packages("packcircles")
+# devtools::install_github("hdng/trees")
+# install.packages("readr")
+# install.packages("dplyr")
+# install.packages("htmlwidgets")
+# install.packages("webshot2")
+# install.packages("magick")
 
 library(readr)
 library(dplyr)
@@ -17,17 +19,36 @@ library(clonevol)
 library(jellyfisher)
 library(htmlwidgets)
 library(webshot2)
-dir.create("jellyfisher_results/tables", recursive = TRUE, showWarnings = FALSE)
-dir.create("jellyfisher_results/plots", recursive = TRUE, showWarnings = FALSE)
+library(magick)
 
-# Set TRUE to open each plot in the RStudio Viewer as it is made
-show_in_viewer <- TRUE
+# Create output directories
+dir.create(
+  "jellyfisher_results/tables",
+  recursive = TRUE,
+  showWarnings = FALSE
+)
 
-# Read the SciClone and mutation annotation data
-sciclone_total <- read_tsv("C:/Users/rjunc/Documents/4050_project/Fall-2026.CAPS-DATASTUDIES.4050.01/SciClone Analysis/sciclone_results/tables/sciclone_total.tsv", show_col_types = FALSE)
-annotations <- read_tsv("C:/Users/rjunc/Documents/4050_project/Fall-2026.CAPS-DATASTUDIES.4050.01/SciClone Analysis/annotated_mutations.tsv", show_col_types = FALSE)
+dir.create(
+  "jellyfisher_results/plots",
+  recursive = TRUE,
+  showWarnings = FALSE
+)
 
-# Check that the input data has the required columns
+# Set TRUE to open each interactive plot in the RStudio Viewer
+show_in_viewer <- FALSE
+
+# Input files
+sciclone_total <- read_tsv(
+  "C:/Users/rjunc/Documents/4050_project/Fall-2026.CAPS-DATASTUDIES.4050.01/SciClone Analysis/sciclone_results/tables/sciclone_total.tsv",
+  show_col_types = FALSE
+)
+
+annotations <- read_tsv(
+  "C:/Users/rjunc/Documents/4050_project/Fall-2026.CAPS-DATASTUDIES.4050.01/SciClone Analysis/annotated_mutations.tsv",
+  show_col_types = FALSE
+)
+
+# Check required columns
 required_sciclone <- c(
   "Patient_ID", "chr", "st", "cluster",
   "adequateDepth", "Primary_VAF", "Metastasis_VAF"
@@ -41,10 +62,15 @@ if (!all(c("Chromosome", "Start_Position") %in% names(annotations))) {
   stop("The annotation table needs Chromosome and Start_Position columns.")
 }
 
-# Function definitions to normalize chromosome and position values for joining
+# Normalize chromosome and position values for joining
 normalize_chr <- function(x) {
-  toupper(sub("^chr", "", trimws(as.character(x)),
-              ignore.case = TRUE))
+  toupper(
+    sub(
+      "^chr", "",
+      trimws(as.character(x)),
+      ignore.case = TRUE
+    )
+  )
 }
 
 normalize_pos <- function(x) {
@@ -63,8 +89,10 @@ gene_col <- pick_column(
 )
 
 protein_col <- pick_column(
-  c("HGVSp_Short", "HGVSp", "Protein_Change",
-    "ProteinChange", "AAChange", "Amino_acids"),
+  c(
+    "HGVSp_Short", "HGVSp", "Protein_Change",
+    "ProteinChange", "AAChange", "Amino_acids"
+  ),
   names(annotations)
 )
 
@@ -78,9 +106,13 @@ if (is.na(gene_col)) {
 }
 
 message("Gene annotation column: ", gene_col)
-message("Protein-change column: ", ifelse(is.na(protein_col), "not found", protein_col))
 
-# Combine gene name with protein change where available
+message(
+  "Protein-change column: ",
+  ifelse(is.na(protein_col), "not found", protein_col)
+)
+
+# Create annotation lookup
 annotation_lookup <- annotations %>%
   transmute(
     chr_key = normalize_chr(Chromosome),
@@ -115,16 +147,22 @@ annotation_lookup <- annotations %>%
   group_by(chr_key, pos_key) %>%
   summarise(
     mutation_label = {
-      z <- unique(mutation_label[
-        !is.na(mutation_label) & mutation_label != ""
-      ])
-      if (length(z)) paste(z, collapse = " / ") else NA_character_
+      z <- unique(
+        mutation_label[
+          !is.na(mutation_label) & mutation_label != ""
+        ]
+      )
+      
+      if (length(z)) {
+        paste(z, collapse = " / ")
+      } else {
+        NA_character_
+      }
     },
     .groups = "drop"
   )
 
-
-# Prepare mutation labels for one patient's clones
+# Prepare mutation annotations for one patient
 prepare_mutation_labels <- function(patient_id) {
   
   variants <- sciclone_total %>%
@@ -147,7 +185,8 @@ prepare_mutation_labels <- function(patient_id) {
     stop("No eligible SciClone variants found for ", patient_id)
   }
   
-  # Match the consecutive cluster numbering used by the batch runner
+  # Create consecutive SciClone cluster labels for reference.
+  # These are NOT assumed to be ClonEvol branch IDs.
   variants <- variants %>%
     mutate(
       clone_id = match(
@@ -167,7 +206,7 @@ prepare_mutation_labels <- function(patient_id) {
       )
     )
   
-  # One row per cluster, with all associated mutation names
+  # One row per SciClone cluster
   cluster_labels <- variants %>%
     group_by(clone_id, original_cluster) %>%
     summarise(
@@ -175,59 +214,13 @@ prepare_mutation_labels <- function(patient_id) {
       .groups = "drop"
     )
   
-  list(variants = variants, cluster_labels = cluster_labels)
+  list(
+    variants = variants,
+    cluster_labels = cluster_labels
+  )
 }
 
-
-# Label the Jellyfisher phylogeny with mutations
-
-label_phylogeny <- function(tables, cluster_labels) {
-  
-  phy_ids <- as.character(tables$phylogeny$subclone)
-  
-  # Jellyfisher uses subclone IDs to connect its tables.
-  # Rename IDs consistently in phylogeny and compositions.
-  label_map <- setNames(phy_ids, phy_ids)
-  label_map["0"] <- "Root (0)"
-  
-  for (i in seq_len(nrow(cluster_labels))) {
-    
-    id <- as.character(cluster_labels$clone_id[i])
-    
-    if (id %in% phy_ids) {
-      label_map[id] <- paste0(
-        "Clone ", id,
-        " [SciClone cluster ", cluster_labels$original_cluster[i],
-        "]: ",
-        cluster_labels$mutations[i]
-      )
-    }
-  }
-  
-  relabel <- function(x) {
-    x <- as.character(x)
-    result <- unname(label_map[x])
-    result[is.na(result)] <- x[is.na(result)]
-    result
-  }
-  
-  tables$phylogeny$subclone <- relabel(
-    tables$phylogeny$subclone
-  )
-  
-  tables$phylogeny$parent <- relabel(
-    tables$phylogeny$parent
-  )
-  
-  tables$compositions$subclone <- relabel(
-    tables$compositions$subclone
-  )
-  
-  tables
-}
-
-
-# Process every saved ClonEvol result
+# Locate saved ClonEvol results
 rds_files <- list.files(
   "./clonevol_results/objects/",
   pattern = "_clonevol\\.rds$",
@@ -235,9 +228,10 @@ rds_files <- list.files(
 )
 
 if (length(rds_files) == 0) {
-  stop("No ClonEvol RDS files found")
+  stop("No ClonEvol RDS files found.")
 }
 
+# Process one patient
 process_patient <- function(rds_file) {
   
   patient_id <- sub(
@@ -247,11 +241,22 @@ process_patient <- function(rds_file) {
   
   message("\nProcessing ", patient_id)
   
+  # Track temporary files so they can be cleaned up on failure too
+  temp_html <- file.path(
+    "./jellyfisher_results/plots/",
+    paste0(patient_id, "_temp.html")
+  )
+  
+  tree_png <- file.path(
+    "./jellyfisher_results/plots/",
+    paste0(patient_id, "_tree_temp.png")
+  )
+  
   tryCatch({
     
     y <- readRDS(rds_file)
     
-    # Only plot patients with an available consensus tree
+    # Check for a matched consensus tree
     n_trees <- length(y$matched$merged.trees)
     
     if (n_trees == 0) {
@@ -264,7 +269,7 @@ process_patient <- function(rds_file) {
       ))
     }
     
-    # Convert the tree and extract Jellyfisher tables
+    # Convert tree and extract Jellyfisher tables
     y_branch <- clonevol::convert.consensus.tree.clone.to.branch(y)
     
     tables <- jellyfisher::extract_tables_from_clonevol(
@@ -272,61 +277,137 @@ process_patient <- function(rds_file) {
       model = 1
     )
     
-    # Match actual mutations to the inferred clone IDs
+    # Prepare mutation annotations
     mutation_data <- prepare_mutation_labels(patient_id)
     
-    tables <- label_phylogeny(
-      tables,
-      mutation_data$cluster_labels
-    )
-    
-    # Save the mutation-to-cluster lookup for verification
+    # Save mutation-to-SciClone-cluster lookup
     write_tsv(
       mutation_data$cluster_labels,
-      file.path("./jellyfisher_results/tables/", paste0(patient_id, "_cluster_mutations.tsv"))
+      file.path(
+        "./jellyfisher_results/tables/",
+        paste0(patient_id, "_cluster_mutations.tsv")
+      )
     )
     
-    # Create and save the interactive plot
+    # Create Jellyfisher widget using the original clone IDs
     widget <- jellyfisher::jellyfisher(
       tables,
       height = "700px",
       width = "100%"
     )
     
-    # Temporary HTML file needed to render the widget
-    temp_html <- file.path("./jellyfisher_results/plots/",
-                           paste0(patient_id,"_temp.html"))
-    
-    # Final PNG image
-    png_file <- file.path(
-      "./jellyfisher_results/plots/",
-      paste0(patient_id, "_jellyfisher.png")
-    )
-    
-    # Save the widget temporarily as HTML
+    # Capture the widget as a temporary PNG
     htmlwidgets::saveWidget(
       widget,
       file = temp_html,
       selfcontained = TRUE
     )
     
-    # Capture the rendered widget as a PNG
     webshot2::webshot(
       url = temp_html,
-      file = png_file,
-      vwidth = 1600,
+      file = tree_png,
+      vwidth = 1400,
       vheight = 1000,
       delay = 3
     )
     
-    # Remove the temporary HTML file after successful capture
-    file.remove(temp_html)
+    # Build the mutation legend
+    legend_data <- mutation_data$cluster_labels %>%
+      arrange(clone_id)
+    
+    legend_lines <- unlist(
+      lapply(seq_len(nrow(legend_data)), function(i) {
+        
+        mutations <- strwrap(
+          legend_data$mutations[i],
+          width = 42
+        )
+        
+        c(
+          paste0(
+            "SciClone cluster ",
+            legend_data$original_cluster[i]
+          ),
+          paste0("  - ", mutations),
+          ""
+        )
+      }),
+      use.names = FALSE
+    )
+    
+    legend_text <- paste(
+      c(
+        paste("Patient:", patient_id),
+        "MUTATION LEGEND",
+        "==============================",
+        "",
+        legend_lines
+      ),
+      collapse = "\n"
+    )
+    
+    # Estimate a generous height for the legend
+    legend_height <- max(
+      1200,
+      45 * (length(strsplit(legend_text, "\n")[[1]]) + 2)
+    )
+    
+    # Create legend panel
+    legend_img <- magick::image_blank(
+      width = 650,
+      height = legend_height,
+      color = "white"
+    )
+    
+    legend_img <- magick::image_annotate(
+      legend_img,
+      text = legend_text,
+      gravity = "northwest",
+      location = "+25+25",
+      size = 18,
+      font = "Arial",
+      color = "black"
+    )
+    
+    # Read tree screenshot
+    tree_img <- magick::image_read(tree_png)
+    
+    # Extend tree canvas to match legend height
+    tree_width <- magick::image_info(tree_img)$width
+    
+    tree_img <- magick::image_extent(
+      tree_img,
+      geometry = paste0(tree_width, "x", legend_height),
+      gravity = "north",
+      color = "white"
+    )
+    
+    # Combine tree and legend side by side
+    combined_img <- magick::image_append(
+      c(tree_img, legend_img),
+      stack = FALSE
+    )
+    
+    # Save final PNG
+    final_png <- file.path(
+      "./jellyfisher_results/plots/",
+      paste0(patient_id, "_jellyfisher.png")
+    )
+    
+    magick::image_write(
+      combined_img,
+      path = final_png,
+      format = "png"
+    )
+    
+    # Clean up intermediate files
+    file.remove(temp_html, tree_png)
+    
+    message("Saved tree with mutation legend: ", final_png)
     
     if (show_in_viewer) {
       print(widget)
     }
-    
-    message("Saved Jellyfisher plot for ", patient_id)
     
     data.frame(
       Patient_ID = patient_id,
@@ -336,7 +417,19 @@ process_patient <- function(rds_file) {
     
   }, error = function(e) {
     
-    message("Failed for ", patient_id, ": ", conditionMessage(e))
+    # Remove temporary files if processing fails
+    if (file.exists(temp_html)) {
+      file.remove(temp_html)
+    }
+    
+    if (file.exists(tree_png)) {
+      file.remove(tree_png)
+    }
+    
+    message(
+      "Failed for ", patient_id, ": ",
+      conditionMessage(e)
+    )
     
     data.frame(
       Patient_ID = patient_id,
@@ -346,15 +439,17 @@ process_patient <- function(rds_file) {
   })
 }
 
-# Run all saved patient objects
-plot_summary <- bind_rows(lapply(rds_files, process_patient))
-
-write_tsv(
-  plot_summary,
-  file.path("./jellyfisher_results/", "jellyfisher_run_summary.tsv")
+# Run all patient objects
+plot_summary <- bind_rows(
+  lapply(rds_files, process_patient)
 )
 
-# Final results
+# Save batch summary
+write_tsv(
+  plot_summary,
+  "./jellyfisher_results/jellyfisher_run_summary.tsv"
+)
+
+# Display results
 print(plot_summary)
 print(count(plot_summary, Status))
-
