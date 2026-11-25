@@ -14,7 +14,7 @@ library(dplyr)
 # Read in files
 input_raw <- read_tsv("./SciClone Analysis/sciclone_results/tables/sciclone_total.tsv")
 input_clean <- read_tsv("./SciClone Analysis/sciclone_results/tables/sciclone_clustered.tsv")
-head(input_raw)
+print(input_clean)
 
 # Function definition for plotting patient VAFs by frame
 # Parameters:
@@ -34,7 +34,7 @@ create_plot <- function(patient_id){
       color = factor(cluster)
     ) 
   ) + 
-      geom_point(size = 3) + 
+      geom_point(size = 6) + 
       geom_abline(
         slope = vaf_ratio, intercept = 0, linetype = "dashed"
       ) +
@@ -63,7 +63,7 @@ patients <- unique(input_raw$Patient_ID)
 frames <- lapply(patients, create_plot)
 
 
-test_plot <- create_plot("EV-001")
+test_plot <- create_plot("EV-070")
 test_plot
 
 frame_files <- sapply(
@@ -89,4 +89,9 @@ gif <- image_read(frame_files)
 gif <- image_animate(gif, fps = 1)
  
 image_write(gif,"./SciClone Analysis/sciclone_results/plots/sciclone_animation.gif")
- 
+
+
+annotated_mutations <- read_tsv("./SciClone Analysis/annotated_mutations.tsv")
+hist(as.factor(annotated_mutations$Hugo_Symbol))
+ggplot(annotated_mutations, aes(x = Hugo_Symbol)) + geom_bar(fill = "green") + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+ggplot(head(count(annotated_mutations, Hugo_Symbol) %>% arrange(desc(n)), 10), aes(reorder(Hugo_Symbol, n), n)) + geom_col(fill="blue") + labs(title = "Top 10 Hugo Symbols") + theme(axis.text.x = element_text(size=12))

@@ -453,3 +453,41 @@ write_tsv(
 # Display results
 print(plot_summary)
 print(count(plot_summary, Status))
+
+# Get all PNG files
+all_images <- list.files(
+  path = "./ClonEvol Analysis/jellyfisher_results/plots/",
+  pattern = "\\.png$",
+  full.names = TRUE
+)
+
+# Read all images
+imgs <- image_read(all_images)
+
+# Resize images
+imgs <- image_scale(imgs, "x800")
+
+# Make all images the same size
+# Put every image on an 800 x 800 canvas
+imgs <- image_extent(
+  imgs,
+  geometry = "1500x1000",
+  gravity = "center",
+  color = "black"
+)
+
+# Add a 20-pixel black border
+imgs <- image_border(imgs, "black", "20x20")
+
+# Animate
+gif <- image_animate(
+  imgs,
+  fps = 1,
+  loop = 0
+)
+
+# Save GIF
+image_write(gif, "jellyfisher_plots.gif")
+
+
+d <- read.delim("C:/Users/rjunc/Documents/4050_project/Fall-2026.CAPS-DATASTUDIES.4050.01/ClonEvol Analysis/sciclone_total.tsv"); d <- d[!is.na(d$cluster), ]; g <- data.frame(chr = c("3","5","12","17"), s = c(178865802, 112043195, 25357723, 7571720), e = c(178952738, 112181105, 25403870, 7590868), sym = c("PIK3CA","APC","KRAS","TP53")); d$gene <- mapply(function(c, p) { i <- which(g$chr == c & p >= g$s & p <= g$e); if (length(i)) paste0(g$sym[i[1]], ":", p) else paste0("chr", c, ":", p) }, d$chr, d$st); tab <- aggregate(list(n = d$st), list(cluster = d$cluster, gene = d$gene), length); top <- do.call(rbind, lapply(split(tab, tab$cluster), function(x) head(x[order(-x$n), ], 6))); top$lab <- factor(paste0(top$cluster, "_", top$gene), levels = paste0(top$cluster, "_", top$gene)); library(ggplot2); ggplot(top, aes(lab, n, fill = factor(cluster))) + geom_col() + geom_text(aes(label = n), hjust = -0.3) + coord_flip() + scale_x_discrete(labels = function(x) sub("^[0-9]+_", "", x)) + facet_wrap(~cluster, scales = "free") + labs(x = NULL, y = "patients", fill = "cluster", title = "Most frequent mutations per ClonEvol cluster (top 6)") + theme(legend.title = element_blank())
